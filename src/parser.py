@@ -12,7 +12,7 @@ videoInfoHost = baseURL + "/get_video_info?video_id={}"
 class infoGetter:
 
     def parse(self, itagURL=None):
-        self.info = {
+        info = {
             "id": self.videoDetails.get("videoId"),
             "title": self.title,
             "duration": self.videoDetails.get("lengthSeconds"),
@@ -44,16 +44,16 @@ class infoGetter:
             if itagURL == itag:
                 s["url"] = self.buildURL(item)
             streams[itag] = s
-        self.info['streams'] = streams
-        return self.info
+        info['streams'] = streams
+        return info
 
     def buildURL(self, item):
         url = item.get("url")
         if url:
             return url
-        url = item.get("cipher")
+        url = item.get("signatureCipher") or item.get("cipher")
         if not url:
-            raise ValueError("not found url or cipher")
+            raise ValueError("not found signatureCipher or cipher")
         u = dict(parse_qsl(url))
         url = u.get("url")
         if not url:
