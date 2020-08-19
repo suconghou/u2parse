@@ -5,7 +5,7 @@ import req
 import traceback
 
 baseURL = "https://www.youtube.com"
-videoPageHost = baseURL + "/watch?v={}&spf=prefetch"
+videoPageHost = baseURL + "/watch?v={}"
 videoInfoHost = baseURL + "/get_video_info?video_id={}"
 
 
@@ -96,23 +96,19 @@ class videoParser:
 
 class pageParser(infoGetter):
     def __init__(self, vid):
-        videoPageData = json.loads(req.fetch(videoPageHost.format(vid), 600))
-        jsPath = None
-        title = None
-        player_response = None
-        for item in videoPageData:
-            if not isinstance(item, dict):
-                continue
-            if item.has_key("title") and item.has_key("data"):
-                title = item.get("title")
-                data = item.get("data")
-                player_response = json.loads(
-                    data["swfcfg"]["args"]["player_response"])
-                jsPath = data["swfcfg"]["assets"]["js"]
-        if not player_response or not title or not jsPath:
+        videoPageData = req.fetch(videoPageHost.format(vid), 600)
+        arr = re.search(
+            r';ytplayer\.config\s*=\s*({.+?});ytplayer', videoPageData)
+        if not arr:
+            raise ValueError("ytplayer config not found")
+        data = json.loads(arr.group(1))
+        jsPath = data["assets"]["js"]
+        player_response = json.loads(data["args"]["player_response"])
+        if not player_response or not jsPath:
             raise ValueError("not found player_response")
         if not player_response.has_key("streamingData") or not player_response.has_key("videoDetails"):
             raise ValueError("invalid player_response")
+        title = player_response["videoDetails"]["title"]
         self.title = title
         self.jsPath = jsPath
         self.videoDetails = player_response.get("videoDetails")
