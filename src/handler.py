@@ -11,7 +11,7 @@ class proxy():
             data = parser.info()
             return data, 200, {"Cache-Control": "public, max-age=604800", "Access-Control-Allow-Origin": "*"}
         except Exception as e:
-            return str(e), 500, {"Content-Type": "text/plain"}
+            return {'code': -1, 'msg': u'{0}'.format(e)}, 200, {"Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*"}
 
     @classmethod
     def videopart(cls, args, vid, itag):
@@ -20,4 +20,4 @@ class proxy():
             data = parser.infoPart(itag)
             return data, 200, {"Cache-Control": "public, max-age=3600"}
         except Exception as e:
-            return str(e), 500, {"Content-Type": "text/plain"}
+            return {'code': -1, 'msg': u'{0}'.format(e)}, 200, {"Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*"}

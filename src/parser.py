@@ -127,6 +127,15 @@ class infoParser(infoGetter):
         player_response = json.loads(videoInfoData.get("player_response"))
         if not player_response:
             raise ValueError("empty player_response")
+        ps = player_response.get("playabilityStatus")
+        s = ps.get("status")
+        if s in ['UNPLAYABLE', 'LOGIN_REQUIRED', 'ERROR']:
+            reason = ps.get('reason') or s
+            subreason = ps.get('errorScreen', {}).get(
+                'playerErrorMessageRenderer', {}).get('subreason', {}).get('simpleText')
+            if subreason:
+                reason += ' ' + subreason
+            raise ValueError(reason)
 
         self.videoDetails = player_response.get("videoDetails")
         self.streamingData = player_response.get("streamingData")
