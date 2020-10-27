@@ -96,24 +96,33 @@ class videoParser:
 
 class pageParser(infoGetter):
     def __init__(self, vid):
+        jsPath = ""
         videoPageData = req.fetch(videoPageHost.format(vid), 600)
+        arr = re.search(r'"jsUrl":"(\/s\/player.*?base.js)"', videoPageData)
+        if arr:
+            jsPath = arr.group(1)
+            req.cache.set("jsPath", jsPath, 604800)
         arr = re.search(
             r';ytplayer\.config\s*=\s*({.+?});ytplayer', videoPageData)
         if not arr:
             raise ValueError("ytplayer config not found")
         data = json.loads(arr.group(1))
-        jsPath = data["assets"]["js"]
+        if data.get("assets", {}).get("js") and not jsPath:
+            jsPath = data["assets"]["js"]
         player_response = json.loads(data["args"]["player_response"])
-        if not player_response or not jsPath:
+        if not player_response:
             raise ValueError("not found player_response")
         if not player_response.has_key("streamingData") or not player_response.has_key("videoDetails"):
             raise ValueError("invalid player_response")
         title = player_response["videoDetails"]["title"]
         self.title = title
-        self.jsPath = jsPath
         self.videoDetails = player_response.get("videoDetails")
         self.streamingData = player_response.get("streamingData")
-        req.cache.set("jsPath", self.jsPath, 604800)
+        if jsPath:
+            self.jsPath = jsPath
+            req.cache.set("jsPath", self.jsPath, 604800)
+        else:
+            self.jsPath = req.cache.get("jsPath")
 
 
 class infoParser(infoGetter):
