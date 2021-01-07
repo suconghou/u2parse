@@ -102,6 +102,30 @@ class pageParser(infoGetter):
         if arr:
             jsPath = arr.group(1)
             req.cache.set("jsPath", jsPath, 604800)
+
+        try:
+            hasJsPath, videoDetails, streamingData = self.extract1(
+                videoPageData)
+            if not jsPath:
+                jsPath = hasJsPath
+        except Exception as e:
+            print(str(e) + ' , try extract2')
+            videoDetails, streamingData = self.extract2(
+                videoPageData)
+
+        if not videoDetails.has_key("title"):
+            raise ValueError("pageParser failed")
+        self.title = videoDetails["title"]
+        self.videoDetails = videoDetails
+        self.streamingData = streamingData
+        if jsPath:
+            self.jsPath = jsPath
+            req.cache.set("jsPath", self.jsPath, 604800)
+        else:
+            self.jsPath = req.cache.get("jsPath")
+
+    def extract1(self, videoPageData):
+        jsPath = ""
         arr = re.search(
             r';ytplayer\.config\s*=\s*({.+?});ytplayer', videoPageData)
         if not arr:
@@ -114,15 +138,19 @@ class pageParser(infoGetter):
             raise ValueError("not found player_response")
         if not player_response.has_key("streamingData") or not player_response.has_key("videoDetails"):
             raise ValueError("invalid player_response")
-        title = player_response["videoDetails"]["title"]
-        self.title = title
-        self.videoDetails = player_response.get("videoDetails")
-        self.streamingData = player_response.get("streamingData")
-        if jsPath:
-            self.jsPath = jsPath
-            req.cache.set("jsPath", self.jsPath, 604800)
-        else:
-            self.jsPath = req.cache.get("jsPath")
+        return jsPath, player_response.get("videoDetails"), player_response.get("streamingData")
+
+    def extract2(self, videoPageData):
+        arr = re.search(
+            r'ytInitialPlayerResponse\s+=\s+(.*\]});.*?var', videoPageData)
+        if not arr:
+            raise ValueError("initPlayer not found")
+        data = json.loads(arr.group(1))
+        if not data:
+            raise ValueError("parse initPlayer error")
+        if not data.has_key("streamingData") or not data.has_key("videoDetails"):
+            raise ValueError("invalid initPlayer")
+        return data.get('videoDetails'), data.get('streamingData')
 
 
 class infoParser(infoGetter):
