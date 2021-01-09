@@ -169,9 +169,9 @@ class infoParser(infoGetter):
         if s in ['UNPLAYABLE', 'LOGIN_REQUIRED', 'ERROR']:
             reason = ps.get('reason') or s
             subreason = ps.get('errorScreen', {}).get(
-                'playerErrorMessageRenderer', {}).get('subreason', {}).get('simpleText')
-            if subreason:
-                reason += ' ' + subreason
+                'playerErrorMessageRenderer', {}).get('subreason', {}).get('runs')
+            if subreason and subreason[0]:
+                reason += ' ' + subreason[0].get('text')
             raise ValueError(reason)
 
         self.videoDetails = player_response.get("videoDetails")
