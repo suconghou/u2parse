@@ -6,7 +6,7 @@ import traceback
 
 baseURL = "https://www.youtube.com"
 videoPageHost = baseURL + "/watch?v={}"
-videoInfoHost = baseURL + "/get_video_info?video_id={}"
+videoInfoHost = baseURL + "/get_video_info?video_id={}&html5=1"
 
 
 class infoGetter:
