@@ -103,15 +103,7 @@ class pageParser(infoGetter):
             jsPath = arr.group(1)
             req.cache.set("jsPath", jsPath, 604800)
 
-        try:
-            hasJsPath, videoDetails, streamingData = self.extract1(
-                videoPageData)
-            if not jsPath:
-                jsPath = hasJsPath
-        except Exception as e:
-            print(str(e) + ' , try extract2')
-            videoDetails, streamingData = self.extract2(
-                videoPageData)
+        videoDetails, streamingData = self.extract(videoPageData)
 
         if not videoDetails.has_key("title"):
             raise ValueError("pageParser failed")
@@ -124,25 +116,10 @@ class pageParser(infoGetter):
         else:
             self.jsPath = req.cache.get("jsPath")
 
-    def extract1(self, videoPageData):
-        jsPath = ""
+    def extract(self, videoPageData):
+        open('/tmp/2.html', 'w').write(videoPageData)
         arr = re.search(
-            r';ytplayer\.config\s*=\s*({.+?});ytplayer', videoPageData)
-        if not arr:
-            raise ValueError("ytplayer config not found")
-        data = json.loads(arr.group(1))
-        if data.get("assets", {}).get("js") and not jsPath:
-            jsPath = data["assets"]["js"]
-        player_response = json.loads(data["args"]["player_response"])
-        if not player_response:
-            raise ValueError("not found player_response")
-        if not player_response.has_key("streamingData") or not player_response.has_key("videoDetails"):
-            raise ValueError("invalid player_response")
-        return jsPath, player_response.get("videoDetails"), player_response.get("streamingData")
-
-    def extract2(self, videoPageData):
-        arr = re.search(
-            r'ytInitialPlayerResponse\s+=\s+(.*\]});.*?var', videoPageData)
+            r'ytInitialPlayerResponse\s+=\s+(.*}{3,});', videoPageData)
         if not arr:
             raise ValueError("initPlayer not found")
         data = json.loads(arr.group(1))
