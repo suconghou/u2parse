@@ -22,7 +22,7 @@ class memcache:
     def expire(self):
         t = time.time()
         for k, v in list(self.cache.items()):
-            [value, expire] = v
+            [_, expire] = v
             if expire < t:
                 k in self.cache and self.cache.pop(k)
 
@@ -35,10 +35,29 @@ def fetch(url, ttl=86400):
     if v:
         return v
     res = urllib2.urlopen(url, None, 20)
+    if not res:
+        raise IOError("urlopen failed {}".format(url))
     code = res.getcode()
-    if code == 200:
-        data = res.read()
-        if data:
-            cache.set(url, data, ttl)
-        return data
-    raise IOError("HTTP Error {}".format(code))
+    if code != 200:
+        raise IOError("HTTP Error {}".format(code))
+    data = res.read()
+    if data:
+        cache.set(url, data, ttl)
+    return data
+
+
+def doPost(url, cacheKey, body, ttl=7200):
+    v = cache.get(cacheKey)
+    if v:
+        return v
+    req = urllib2.Request(url, body, {'Content-Type': 'application/json'})
+    res = urllib2.urlopen(req)
+    if not res:
+        raise IOError("urlopen failed {}".format(url))
+    code = res.getcode()
+    if code != 200:
+        raise IOError("HTTP Error {}".format(code))
+    data = res.read()
+    if data:
+        cache.set(cacheKey, data, ttl)
+    return data

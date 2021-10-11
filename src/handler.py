@@ -1,5 +1,4 @@
 from parser import videoParser
-import req
 
 
 class proxy():
@@ -9,6 +8,9 @@ class proxy():
         try:
             parser = videoParser(vid)
             data = parser.info()
+            streams = data.get('streams', {})
+            for key in streams:
+                del streams[key]['url']
             return data, 200, {"Cache-Control": "public, max-age=604800", "Access-Control-Allow-Origin": "*"}
         except Exception as e:
             return {'code': -1, 'msg': u'{0}'.format(e)}, 200, {"Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*"}

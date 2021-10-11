@@ -1,17 +1,109 @@
-from urlparse import parse_qsl, urlsplit
+from urlparse import parse_qsl
 import json
 import re
 import req
-import traceback
 
 baseURL = "https://www.youtube.com"
 videoPageHost = baseURL + "/watch?v={}"
-videoInfoHost = baseURL + "/get_video_info?video_id={}&html5=1"
+playerURL = "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
 
 
-class infoGetter:
+class videoParser:
+    def __init__(self, vid):
+        self.parser = infoParser(vid)
 
-    def parse(self, itagURL=None):
+    def info(self):
+        return self.parser.parse()
+
+    def infoPart(self, itag):
+        info = self.parser.parse()
+        streams = info.get("streams")
+        if not streams:
+            raise ValueError("not found streams")
+        itagInfo = streams.get(itag)
+        if not itagInfo:
+            raise ValueError("itag {} not found".format(itag))
+        return {
+            'url': itagInfo.get('url')
+        }
+
+
+class infoParser():
+
+    def __init__(self, vid):
+        self.decipher = None
+        try:
+            self.playerParse(vid)
+        except:
+            self.pageParse(vid)
+
+    def playerParse(self, vid):
+        obj = {
+            "videoId": vid,
+            "context": {
+                "client": {
+                    "hl": "en",
+                    "gl": "US",
+                    "clientName": "ANDROID",
+                    "clientVersion": "16.02"
+                }
+            }
+        }
+        body = json.dumps(obj)
+        res = req.doPost(playerURL, vid, body, 7200)
+
+        videoDetails, streamingData = self.extract(res)
+
+        self.title = videoDetails["title"]
+        self.videoDetails = videoDetails
+        self.streamingData = streamingData
+
+    def pageParse(self, vid):
+        jsPath = ""
+        videoPageData = req.fetch(videoPageHost.format(vid), 7200)
+        arr = re.search(r'"jsUrl":"(\/s\/player.*?base.js)"', videoPageData)
+        if arr:
+            jsPath = arr.group(1)
+            req.cache.set("jsPath", jsPath, 604800)
+
+        arr = re.search(
+            r'ytInitialPlayerResponse\s+=\s+(.*}{3,});', videoPageData)
+        if not arr:
+            raise ValueError("ytInitialPlayerResponse not found")
+
+        videoDetails, streamingData = self.extract(arr.group(1))
+
+        self.title = videoDetails["title"]
+        self.videoDetails = videoDetails
+        self.streamingData = streamingData
+        if jsPath:
+            self.jsPath = jsPath
+            req.cache.set("jsPath", self.jsPath, 604800)
+        else:
+            self.jsPath = req.cache.get("jsPath")
+
+    def extract(self, jsonStr):
+        data = json.loads(jsonStr)
+        if not data or not data.has_key("playabilityStatus"):
+            raise ValueError("parse ytInitialPlayerResponse error")
+        ps = data.get("playabilityStatus")
+        s = ps.get("status")
+        if s != "OK":
+            reason = ps.get('reason') or s
+            subreason = ps.get('errorScreen', {}).get(
+                'playerErrorMessageRenderer', {}).get('subreason', {}).get('runs')
+            if subreason and subreason[0]:
+                reason += ' ' + subreason[0].get('text')
+            raise ValueError(reason)
+
+        if not data.has_key("streamingData") or not data.has_key("videoDetails"):
+            raise ValueError("invalid ytInitialPlayerResponse")
+        videoDetails = data.get('videoDetails')
+        if not videoDetails.has_key("title"):
+            raise ValueError("videoPageData error")
+        return videoDetails, data.get('streamingData')
+
+    def parse(self):
         info = {
             "id": self.videoDetails.get("videoId"),
             "title": self.title,
@@ -19,19 +111,18 @@ class infoGetter:
             "author": self.videoDetails.get("author")
         }
         streams = {}
-        for item in self.streamingData.get("formats"):
+        for item in self.streamingData.get("formats", {}):
             itag = item.get("itag")
             s = {
                 "quality": item.get("qualityLabel", item.get("quality")),
                 "type": item.get("mimeType"),
                 "itag": itag,
                 "len": item.get("contentLength"),
+                "url": self.buildURL(item)
             }
-            if itagURL == itag:
-                s["url"] = self.buildURL(item)
             streams[itag] = s
 
-        for item in self.streamingData.get("adaptiveFormats"):
+        for item in self.streamingData.get("adaptiveFormats", {}):
             itag = item.get("itag")
             s = {
                 "quality": item.get("qualityLabel", item.get("quality")),
@@ -40,9 +131,8 @@ class infoGetter:
                 "len": item.get("contentLength"),
                 "initRange":   item.get("initRange", {}),
                 "indexRange": item.get("indexRange", {}),
+                "url": self.buildURL(item)
             }
-            if itagURL == itag:
-                s["url"] = self.buildURL(item)
             streams[itag] = s
         info['streams'] = streams
         return info
@@ -63,9 +153,12 @@ class infoGetter:
     def signature(self, u):
         sp = u.get("sp", "signature")
         if u.get("s"):
-            if not self.jsPath:
-                raise ValueError("jsPath not found")
-            sig = decipher(self.jsPath).decode(u.get("s"))
+            if not self.decipher:
+                if not self.jsPath:
+                    raise ValueError("jsPath not found")
+                bodystr = req.fetch(baseURL+self.jsPath, 604800)
+                self.decipher = decipher(bodystr)
+            sig = self.decipher.decode(u.get("s"))
             return "&{}={}".format(sp, sig)
         elif u.get("sig"):
             return "&{}={}".format(sp, u.get("sig"))
@@ -73,98 +166,12 @@ class infoGetter:
             raise ValueError("can not decode")
 
 
-class videoParser:
-    def __init__(self, vid):
-        try:
-            self.parser = pageParser(vid)
-        except Exception as e:
-            print(str(e) + ' , try infoParser')
-            self.parser = infoParser(vid)
-
-    def info(self):
-        return self.parser.parse()
-
-    def infoPart(self, itag):
-        info = self.parser.parse(itag)
-        itagInfo = info.get("streams").get(itag)
-        if not itagInfo:
-            raise ValueError("itag {} not found".format(itag))
-        return {
-            'url': itagInfo.get('url')
-        }
-
-
-class pageParser(infoGetter):
-    def __init__(self, vid):
-        jsPath = ""
-        videoPageData = req.fetch(videoPageHost.format(vid), 600)
-        arr = re.search(r'"jsUrl":"(\/s\/player.*?base.js)"', videoPageData)
-        if arr:
-            jsPath = arr.group(1)
-            req.cache.set("jsPath", jsPath, 604800)
-
-        videoDetails, streamingData = self.extract(videoPageData)
-
-        if not videoDetails.has_key("title"):
-            raise ValueError("pageParser failed")
-        self.title = videoDetails["title"]
-        self.videoDetails = videoDetails
-        self.streamingData = streamingData
-        if jsPath:
-            self.jsPath = jsPath
-            req.cache.set("jsPath", self.jsPath, 604800)
-        else:
-            self.jsPath = req.cache.get("jsPath")
-
-    def extract(self, videoPageData):
-        open('/tmp/2.html', 'w').write(videoPageData)
-        arr = re.search(
-            r'ytInitialPlayerResponse\s+=\s+(.*}{3,});', videoPageData)
-        if not arr:
-            raise ValueError("initPlayer not found")
-        data = json.loads(arr.group(1))
-        if not data:
-            raise ValueError("parse initPlayer error")
-        if not data.has_key("streamingData") or not data.has_key("videoDetails"):
-            raise ValueError("invalid initPlayer")
-        return data.get('videoDetails'), data.get('streamingData')
-
-
-class infoParser(infoGetter):
-    def __init__(self, vid):
-        videoInfoData = dict(
-            parse_qsl(req.fetch(videoInfoHost.format(vid), 600)))
-        status = videoInfoData.get("status")
-        if status != "ok":
-            raise ValueError("{}:code {},reason {}".format(status, videoInfoData.get(
-                "errorcode"), videoInfoData.get("reason")))
-        player_response = json.loads(videoInfoData.get("player_response"))
-        if not player_response:
-            raise ValueError("empty player_response")
-        ps = player_response.get("playabilityStatus")
-        s = ps.get("status")
-        if s in ['UNPLAYABLE', 'LOGIN_REQUIRED', 'ERROR']:
-            reason = ps.get('reason') or s
-            subreason = ps.get('errorScreen', {}).get(
-                'playerErrorMessageRenderer', {}).get('subreason', {}).get('runs')
-            if subreason and subreason[0]:
-                reason += ' ' + subreason[0].get('text')
-            raise ValueError(reason)
-
-        self.videoDetails = player_response.get("videoDetails")
-        self.streamingData = player_response.get("streamingData")
-
-        self.title = self.videoDetails.get("title")
-        self.jsPath = req.cache.get("jsPath")
-
-
 class decipher:
     '''
         https://github.com/rylio/ytdl/blob/master/signature.go
     '''
 
-    def __init__(self, jsPath):
-        bodystr = req.fetch(baseURL+jsPath, 604800)
+    def __init__(self, bodystr):
         objResult = re.search(r'var ([a-zA-Z_\$][a-zA-Z_0-9]*)=\{((?:(?:[a-zA-Z_\$][a-zA-Z_0-9]*:function\(a\)\{(?:return )?a\.reverse\(\)\}|[a-zA-Z_\$][a-zA-Z_0-9]*:function\(a,b\)\{return a\.slice\(b\)\}|[a-zA-Z_\$][a-zA-Z_0-9]*:function\(a,b\)\{a\.splice\(0,b\)\}|[a-zA-Z_\$][a-zA-Z_0-9]*:function\(a,b\)\{var c=a\[0\];a\[0\]=a\[b(?:%a\.length)?\];a\[b(?:%a\.length)?\]=c(?:;return a)?\}),?\n?)+)\};', bodystr)
         if not objResult:
             raise ValueError("objResult not match")
