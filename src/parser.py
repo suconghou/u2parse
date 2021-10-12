@@ -42,10 +42,8 @@ class infoParser():
             "videoId": vid,
             "context": {
                 "client": {
-                    "hl": "en",
-                    "gl": "US",
-                    "clientName": "ANDROID",
-                    "clientVersion": "16.02"
+                    "clientName": "Android",
+                    "clientVersion": "16.13.35"
                 }
             }
         }
